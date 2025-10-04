@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}FOMO Bot - Postmortem{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8 mx-auto">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title mb-0">
+                    <i class="fas fa-edit me-2"></i>Postmortem Analysis - {{ report.market.symbol }} ({{ report.date }})
+                </h3>
+            </div>
+            <div class="card-body">
+                {% if postmortem %}
+                <div class="alert alert-info">
+                    <h6><i class="fas fa-info-circle me-2"></i>Existing Postmortem</h6>
+                    <p class="mb-0">Created on: {{ postmortem.created_at.strftime('%m/%d/%Y at %H:%M') if postmortem.created_at else 'N/A' }}</p>
+                </div>
+                {% endif %}
+
+                <form method="POST" action="{{ url_for('postmortem', report_id=report.id) }}">
+                    <div class="mb-3">
+                        <label for="reflection_text" class="form-label">Postmortem Analysis</label>
+                        <textarea class="form-control" id="reflection_text" name="reflection_text" rows="10" 
+                                  placeholder="Describe here how the market actually developed and how accurate the analysis was..." required>{{ postmortem.reflection_text if postmortem else '' }}</textarea>
+                        <div class="form-text">
+                            Compare the actual market development with the original analysis. 
+                            What was correct, what was wrong? What insights can be gained for future analyses?
+                        </div>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between">
+                        <a href="{{ url_for('reports') }}" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left me-1"></i>Back to Reports
+                        </a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save me-1"></i>Save Postmortem
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Original Report Link -->
+        <div class="card mt-4">
+            <div class="card-body">
+                <h6><i class="fas fa-link me-2"></i>Original Report</h6>
+                <p class="mb-3">Compare your postmortem with the original report:</p>
+                <a href="{{ url_for('view_report', report_id=report.id) }}" 
+                   class="btn btn-outline-primary" target="_blank">
+                    <i class="fas fa-external-link-alt me-1"></i>View Original Report
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

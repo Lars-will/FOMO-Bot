@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+
+{% block title %}FOMO Bot - Configuration{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8 mx-auto">
+        <h2><i class="fas fa-cog me-2"></i>Configuration</h2>
+        
+        <!-- API Configuration -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-key me-2"></i>API Configuration
+                </h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('save_config') }}">
+                    <div class="mb-3">
+                        <label for="llm_api_key" class="form-label">LLM API Key</label>
+                        <input type="password" class="form-control" id="llm_api_key" name="llm_api_key" 
+                               value="{{ config.llm_api_key if config else '' }}" 
+                               placeholder="OpenAI API Key or similar">
+                        <div class="form-text">API Key for LLM services (OpenAI GPT-4, etc.)</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="news_sources" class="form-label">News Sources</label>
+                        <textarea class="form-control" id="news_sources" name="news_sources" rows="3" 
+                                  placeholder="URLs of news sources (one per line)">{{ config.news_sources if config else '' }}</textarea>
+                        <div class="form-text">URLs for news scraping (Phase 2)</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="chart_folder" class="form-label">Chart Folder</label>
+                        <input type="text" class="form-control" id="chart_folder" name="chart_folder" 
+                               value="{{ config.chart_folder if config else '' }}" 
+                               placeholder="/path/to/charts">
+                        <div class="form-text">Path to folder with chart screenshots (Phase 3)</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="timezone" class="form-label">Timezone</label>
+                        <select class="form-select" id="timezone" name="timezone">
+                            <option value="Europe/Berlin" {% if config and config.timezone == 'Europe/Berlin' %}selected{% endif %}>🇩🇪 Germany (CET/CEST)</option>
+                            <option value="Europe/London" {% if config and config.timezone == 'Europe/London' %}selected{% endif %}>🇬🇧 United Kingdom (GMT/BST)</option>
+                            <option value="America/New_York" {% if config and config.timezone == 'America/New_York' %}selected{% endif %}>🇺🇸 New York (EST/EDT)</option>
+                            <option value="America/Chicago" {% if config and config.timezone == 'America/Chicago' %}selected{% endif %}>🇺🇸 Chicago (CST/CDT)</option>
+                            <option value="America/Los_Angeles" {% if config and config.timezone == 'America/Los_Angeles' %}selected{% endif %}>🇺🇸 Los Angeles (PST/PDT)</option>
+                            <option value="Asia/Tokyo" {% if config and config.timezone == 'Asia/Tokyo' %}selected{% endif %}>🇯🇵 Japan (JST)</option>
+                            <option value="Asia/Shanghai" {% if config and config.timezone == 'Asia/Shanghai' %}selected{% endif %}>🇨🇳 China (CST)</option>
+                            <option value="Australia/Sydney" {% if config and config.timezone == 'Australia/Sydney' %}selected{% endif %}>🇦🇺 Sydney (AEST/AEDT)</option>
+                            <option value="UTC" {% if config and config.timezone == 'UTC' %}selected{% endif %}>🌍 UTC (Coordinated Universal Time)</option>
+                        </select>
+                        <div class="form-text">Timezone for displaying event times in reports</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="star_filter" class="form-label">Event Importance Filter</label>
+                        <select class="form-select" id="star_filter" name="star_filter">
+                            <option value="1" {% if config and config.star_filter == 1 %}selected{% endif %}>⭐ Low and above (1+ stars)</option>
+                            <option value="2" {% if config and config.star_filter == 2 %}selected{% endif %}>⭐⭐ Medium and above (2+ stars)</option>
+                            <option value="3" {% if config and config.star_filter == 3 %}selected{% endif %}>⭐⭐⭐ High only (3 stars)</option>
+                        </select>
+                        <div class="form-text">Only analyze events with this importance level or higher</div>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save me-1"></i>Save Configuration
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Markets Configuration -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-chart-line me-2"></i>Manage Markets
+                </h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('add_market') }}" class="mb-4">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="symbol" class="form-label">Market Symbol</label>
+                            <input type="text" class="form-control" id="symbol" name="symbol" 
+                                   placeholder="e.g. FDAX, BTC, ETH" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="description" class="form-label">Description</label>
+                            <input type="text" class="form-control" id="description" name="description" 
+                                   placeholder="e.g. DAX Futures">
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-success">
+                        <i class="fas fa-plus me-1"></i>Add Market
+                    </button>
+                </form>
+
+                {% if markets %}
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Symbol</th>
+                                <th>Description</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for market in markets %}
+                            <tr>
+                                <td>
+                                    <span class="badge bg-primary">{{ market.symbol }}</span>
+                                </td>
+                                <td>{{ market.description or '-' }}</td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-danger" 
+                                            onclick="deleteMarket({{ market.id }})">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-3">
+                    <p class="text-muted">No markets configured</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- System Information -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-info-circle me-2"></i>System Information
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Available Phases:</h6>
+                        <ul class="list-unstyled">
+                            <li><i class="fas fa-check text-success me-2"></i>Phase 1: Economic Calendar</li>
+                            <li><i class="fas fa-clock text-warning me-2"></i>Phase 2: Financial News</li>
+                            <li><i class="fas fa-clock text-warning me-2"></i>Phase 3: Chart Analysis</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Database:</h6>
+                        <p class="mb-1"><strong>Path:</strong> database/fomo-bot-DB.sqlite</p>
+                        <p class="mb-0"><strong>Status:</strong> <span class="badge bg-success">Active</span></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function deleteMarket(marketId) {
+    if (confirm('Are you sure you want to delete this market?')) {
+        // Create a form to delete the market
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '{{ url_for("delete_market") }}';
+        
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'market_id';
+        input.value = marketId;
+        
+        form.appendChild(input);
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+</script>
+{% endblock %}

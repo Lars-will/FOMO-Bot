@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+
+{% block title %}FOMO Bot - Home{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8 mx-auto">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h3 class="card-title mb-0">
+                    <i class="fas fa-chart-line me-2"></i>Generate Report
+                </h3>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('generate_report_route') }}">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="market" class="form-label">Select Market</label>
+                            <select class="form-select" id="market" name="market" required>
+                                <option value="">-- Select Market --</option>
+                                {% for market in markets %}
+                                <option value="{{ market.symbol }}">{{ market.symbol }} - {{ market.description or '' }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="date" class="form-label">Date</label>
+                            <input type="date" class="form-control" id="date" name="date" readonly>
+                        </div>
+                    </div>
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary btn-lg" id="generateBtn">
+                            <i class="fas fa-magic me-2"></i>Generate Report
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-5">
+    <div class="col-lg-4 mb-4">
+        <div class="card h-100">
+            <div class="card-body text-center">
+                <i class="fas fa-calendar-alt fa-3x text-primary mb-3"></i>
+                <h5 class="card-title">Economic Calendar</h5>
+                <p class="card-text">Automatic analysis of daily economic events with LLM-based assessment of market impacts.</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-4 mb-4">
+        <div class="card h-100">
+            <div class="card-body text-center">
+                <i class="fas fa-newspaper fa-3x text-success mb-3"></i>
+                <h5 class="card-title">Financial News</h5>
+                <p class="card-text">Aggregation and sentiment analysis of financial news from various sources (Phase 2).</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-4 mb-4">
+        <div class="card h-100">
+            <div class="card-body text-center">
+                <i class="fas fa-chart-area fa-3x text-warning mb-3"></i>
+                <h5 class="card-title">Chart Analysis</h5>
+                <p class="card-text">AI-based analysis of chart screenshots with scenario generation (Phase 3).</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-info-circle me-2"></i>About FOMO Bot
+                </h5>
+            </div>
+            <div class="card-body">
+                <p>The FOMO Bot automates the morning preparation routine of a professional day trader. 
+                The system uses web scraping for real-time data, LLMs for analysis, and an intuitive web interface.</p>
+                
+                <h6>Features:</h6>
+                <ul>
+                    <li><strong>Phase 1:</strong> Automation of daily economic calendar analysis</li>
+                    <li><strong>Phase 2:</strong> Automation of daily financial news analysis</li>
+                    <li><strong>Phase 3:</strong> Automated chart analysis of previous day charts</li>
+                </ul>
+                
+                <p class="mb-0">All data and analyses are stored in a local database for review.</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Set today's date as default and make it read-only
+    const dateInput = document.getElementById('date');
+    dateInput.value = new Date().toISOString().split('T')[0];
+    
+    // Add visual styling for read-only field
+    dateInput.style.backgroundColor = '#f8f9fa';
+    dateInput.style.cursor = 'not-allowed';
+    
+    // Handle form submission with loading state
+    document.querySelector('form').addEventListener('submit', function(e) {
+        const btn = document.getElementById('generateBtn');
+        
+        // Show loading state
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Generating Report...';
+        btn.disabled = true;
+        
+        // Button will stay in loading state until page redirects to report
+        // No timeout needed - the page will redirect when report is ready
+    });
+</script>
+{% endblock %}
