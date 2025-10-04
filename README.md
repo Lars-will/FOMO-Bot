@@ -14,46 +14,64 @@ The system is divided into three phases:
 
 ### Prerequisites
 
-- Python 3.8 or higher
-- pip (Python Package Manager)
-- Chrome/Chromium Browser (for Selenium WebDriver)
-- ChromeDriver (automatically managed by Selenium)
+- **Python 3.8 or higher**
+- **pip** (Python Package Manager)
+- **Chrome/Chromium Browser** (for Selenium WebDriver)
+- **ChromeDriver** (automatically managed by Selenium)
+- **OpenAI API Key** (for LLM analysis) - Get one at [platform.openai.com](https://platform.openai.com/api-keys)
 
-### Setup
+### Quick Start
 
 1. **Clone the repository:**
 ```bash
-git clone <repository-url>
+git clone https://github.com/Lars-will/FOMO-Bot.git
 cd FOMO-Bot
 ```
 
-2. **Install dependencies:**
+2. **Install Python dependencies:**
 ```bash
 pip install -r requirements.txt
 ```
 
 3. **Initialize the database:**
 ```bash
-cd src/backend
-python init_db.py
+python src/backend/init_db.py
 ```
 
-4. **Add initial markets:**
+This will:
+- Create the `database/` directory
+- Create the SQLite database with all required tables
+- Add sample markets (FDAX, BTC, SPY, EUR/USD)
+- Set up default configuration
+
+4. **Start the application:**
 ```bash
-cd ../backend
-python populate_markets.py
+python src/run.py
 ```
 
-5. **Start the application:**
+5. **Configure the application:**
+- Open your browser and go to: `http://localhost:5000`
+- Navigate to the **Configuration** page
+- Add your **OpenAI API key**
+- (Optional) Adjust timezone and star filter settings
+- (Optional) Add additional markets
+
+6. **Generate your first report:**
+- Go to the homepage
+- Select a market from the dropdown
+- Choose a date (or use today's date)
+- Click **"Generate Report"**
+
+### Database Notes
+
+⚠️ **Important**: The database file (`database/fomo-bot-DB.sqlite`) is **NOT** included in the repository for security reasons (it may contain your API key). You must run `init_db.py` to create your own database.
+
+If you need to reset your database:
 ```bash
-cd ../src
-python run.py
+python src/backend/init_db.py
 ```
 
-6. **Open browser:**
-```
-http://localhost:5000
-```
+This will delete all existing data and create a fresh database.
 
 ## 📊 Features
 
