@@ -20,8 +20,24 @@
                         <label for="llm_api_key" class="form-label">LLM API Key</label>
                         <input type="password" class="form-control" id="llm_api_key" name="llm_api_key" 
                                value="{{ config.llm_api_key if config else '' }}" 
-                               placeholder="OpenAI API Key or similar">
-                        <div class="form-text">API Key for LLM services (OpenAI GPT-4, etc.)</div>
+                               placeholder="OpenAI API Key">
+                        <div class="form-text">API Key for OpenAI LLM services</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="llm_model" class="form-label">LLM Model</label>
+                        <select class="form-select" id="llm_model" name="llm_model">
+                            <option value="gpt-4o-mini" {% if config and config.llm_model == 'gpt-4o-mini' %}selected{% elif not config %}selected{% endif %}>
+                                GPT-4o Mini (Fast & Cost-effective) ⭐
+                            </option>
+                            <option value="gpt-4.1-mini" {% if config and config.llm_model == 'gpt-4.1-mini' %}selected{% endif %}>
+                                GPT-4.1 Mini
+                            </option>
+                        </select>
+                        <div class="form-text">
+                            Choose your preferred OpenAI model.
+                            <strong>Recommended:</strong> GPT-4o Mini
+                        </div>
                     </div>
                     
                     <div class="mb-3">

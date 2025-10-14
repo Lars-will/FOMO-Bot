@@ -18,6 +18,7 @@ class LLMAnalyzer:
     
     def __init__(self):
         self.api_key = self._get_api_key()
+        self.model = self._get_llm_model()
         # Initialize lock for thread safety if not already done
         if LLMAnalyzer._rate_limit_lock is None:
             import threading
@@ -56,6 +57,19 @@ class LLMAnalyzer:
         except Exception as e:
             logger.error(f"Error getting API key: {e}")
             return None
+    
+    def _get_llm_model(self) -> str:
+        """
+        Get configured LLM model from database config using ORM
+        """
+        try:
+            session = get_db_session()
+            config = session.query(Config).order_by(Config.created_at.desc()).first()
+            session.close()
+            return config.llm_model if config and config.llm_model else 'gpt-4o-mini'
+        except Exception as e:
+            logger.error(f"Error getting LLM model: {e}")
+            return 'gpt-4o-mini'  # Default fallback
     
     def _get_star_filter(self) -> int:
         """
@@ -246,7 +260,7 @@ Output as JSON:
             }
             
             data = {
-                'model': 'gpt-4o-mini',
+                'model': self.model,
                 'messages': [
                     {
                         'role': 'system',
@@ -260,6 +274,8 @@ Output as JSON:
                 'max_tokens': 500,
                 'temperature': 0.3
             }
+            
+            logger.info(f"Using LLM model: {self.model}")
             
             response = requests.post(
                 'https://api.openai.com/v1/chat/completions',
@@ -375,9 +391,14 @@ Output as JSON:
             logger.error(f"Error saving analysis: {e}")
             return None
     
-    def analyze_events_for_date(self, target_date: date, market_symbol: str) -> List[Dict]:
+    def analyze_events_for_date(self, target_date: date, market_symbol: str, progress_callback=None) -> List[Dict]:
         """
         Analyze all events for a specific date and market using ORM
+        
+        Args:
+            target_date: Date to analyze events for
+            market_symbol: Market symbol to analyze for
+            progress_callback: Optional callback function(current, total, event_name) to report progress
         """
         try:
             # Get all events for the date (no market filtering at DB level)
@@ -385,9 +406,15 @@ Output as JSON:
             events = session.query(EconomicEvent).filter(EconomicEvent.date == target_date).all()
             session.close()
             
+            total_events = len(events)
+            
             # Analyze each event for the specific market
             analyses = []
-            for event in events:
+            for idx, event in enumerate(events, 1):
+                # Report progress before analyzing
+                if progress_callback:
+                    progress_callback(idx, total_events, event.event_name)
+                
                 analysis = self.analyze_economic_event(event.id, market_symbol)
                 if analysis:
                     analyses.append(analysis)
@@ -399,15 +426,20 @@ Output as JSON:
             logger.error(f"Error analyzing events for date: {e}")
             return []
 
-def analyze_economic_events(target_date: date = None, market_symbol: str = "FDAX") -> List[Dict]:
+def analyze_economic_events(target_date: date = None, market_symbol: str = "FDAX", progress_callback=None) -> List[Dict]:
     """
     Convenience function to analyze economic events
+    
+    Args:
+        target_date: Date to analyze events for
+        market_symbol: Market symbol to analyze for
+        progress_callback: Optional callback function(current, total, event_name) to report progress
     """
     if target_date is None:
         target_date = date.today()
     
     analyzer = LLMAnalyzer()
-    return analyzer.analyze_events_for_date(target_date, market_symbol)
+    return analyzer.analyze_events_for_date(target_date, market_symbol, progress_callback)
 
 if __name__ == "__main__":
     # Test the analyzer

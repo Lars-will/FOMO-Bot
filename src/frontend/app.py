@@ -1,9 +1,13 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
+from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, Response, stream_with_context
 from datetime import datetime, date, timedelta
 from pathlib import Path
 import logging
 import sys
 import os
+import json
+import queue
+import threading
+import uuid
 
 # Add backend to path for imports
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'backend'))
@@ -19,6 +23,10 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.secret_key = 'fomo-bot-secret-key-2024'  # Change this in production
+
+# Global storage for status updates
+status_queues = {}
+status_locks = threading.Lock()
 
 def get_available_markets():
     """Get list of available markets using ORM"""
@@ -39,14 +47,13 @@ def index():
 
 @app.route('/generate_report', methods=['POST'])
 def generate_report_route():
-    """Generate report for selected market and date"""
+    """Generate report for selected market and date - async with status updates"""
     try:
         market_symbol = request.form.get('market')
         report_date_str = request.form.get('date')
         
         if not market_symbol:
-            flash('Please select a market.', 'error')
-            return redirect(url_for('index'))
+            return jsonify({'error': 'Please select a market.'}), 400
         
         # Parse date
         if report_date_str:
@@ -63,28 +70,163 @@ def generate_report_route():
         session.close()
         
         if existing_report:
-            flash(f'Report for {market_symbol} on {report_date.strftime("%m/%d/%Y")} already exists!', 'info')
-            return redirect(url_for('index'))
+            return jsonify({
+                'exists': True, 
+                'report_id': existing_report.id,
+                'message': f'Report for {market_symbol} on {report_date.strftime("%m/%d/%Y")} already exists!'
+            }), 200
         
-        # Step 1: Scrape economic events (only if not already done today)
-        events_count = scrape_and_save_events(report_date)
+        # Create a unique session ID for this report generation
+        session_id = str(uuid.uuid4())
         
-        # Step 2: Analyze events with LLM for the specific market
-        analyses = analyze_economic_events(report_date, market_symbol)
+        # Create a queue for this session
+        with status_locks:
+            status_queues[session_id] = queue.Queue()
         
-        # Step 3: Generate report
-        report = generate_report(report_date, market_symbol)
+        # Start report generation in background thread
+        thread = threading.Thread(
+            target=_generate_report_async,
+            args=(session_id, market_symbol, report_date)
+        )
+        thread.daemon = True
+        thread.start()
         
-        if report:
-            return redirect(url_for('view_report', report_id=report['report_id']))
-        else:
-            flash('Failed to generate report', 'error')
-            return redirect(url_for('index'))
+        return jsonify({'session_id': session_id}), 200
             
     except Exception as e:
         logger.error(f"Error generating report: {e}")
-        flash(f'Error generating report: {str(e)}', 'error')
-        return redirect(url_for('index'))
+        return jsonify({'error': f'Error generating report: {str(e)}'}), 500
+
+def _send_status(session_id: str, status: str, message: str, progress: int = 0, data: dict = None):
+    """Send status update to the queue for a specific session"""
+    try:
+        with status_locks:
+            if session_id in status_queues:
+                status_data = {
+                    'status': status,
+                    'message': message,
+                    'progress': progress,
+                    'timestamp': datetime.now().isoformat()
+                }
+                if data:
+                    status_data.update(data)
+                status_queues[session_id].put(status_data)
+                logger.info(f"Status update sent for {session_id}: {message}")
+    except Exception as e:
+        logger.error(f"Error sending status: {e}")
+
+def _generate_report_async(session_id: str, market_symbol: str, report_date: date):
+    """Background task to generate report with status updates"""
+    try:
+        _send_status(session_id, 'running', 'Starting report generation...', 0)
+        
+        # Step 1: Scrape economic events
+        _send_status(session_id, 'running', 'Scraping economic events from investing.com...', 10)
+        events_count = scrape_and_save_events(report_date)
+        
+        if events_count > 0:
+            _send_status(session_id, 'running', f'Scraped {events_count} economic events', 30)
+        else:
+            _send_status(session_id, 'running', 'Using existing events data', 30)
+        
+        # Step 2: Analyze events with LLM
+        _send_status(session_id, 'running', f'Analyzing events for {market_symbol} market with AI...', 40)
+        
+        # Get count of events to analyze
+        session = get_db_session()
+        from models import EconomicEvent
+        total_events = session.query(EconomicEvent).filter(EconomicEvent.date == report_date).count()
+        session.close()
+        
+        _send_status(session_id, 'running', f'Starting analysis of {total_events} events...', 45)
+        
+        # Define progress callback for granular updates
+        def analysis_progress(current, total, event_name):
+            # Calculate progress within the 45-70% range (25% total for analysis)
+            progress = 45 + int((current / total) * 25)
+            # Truncate long event names
+            display_name = event_name if len(event_name) <= 50 else event_name[:47] + '...'
+            _send_status(
+                session_id, 
+                'running', 
+                f'Analyzing event {current}/{total}: {display_name}', 
+                progress
+            )
+        
+        analyses = analyze_economic_events(report_date, market_symbol, progress_callback=analysis_progress)
+        
+        _send_status(session_id, 'running', f'Analyzed {len(analyses)} relevant events for {market_symbol}', 70)
+        
+        # Step 3: Generate report
+        _send_status(session_id, 'running', 'Generating HTML report...', 80)
+        report = generate_report(report_date, market_symbol)
+        
+        if report:
+            _send_status(session_id, 'running', 'Report generated successfully!', 90)
+            _send_status(session_id, 'complete', 'Report generation complete', 100, {
+                'report_id': report['report_id'],
+                'events_count': report.get('events_count', 0)
+            })
+        else:
+            _send_status(session_id, 'error', 'Failed to generate report', 0)
+            
+    except Exception as e:
+        logger.error(f"Error in async report generation: {e}")
+        _send_status(session_id, 'error', f'Error: {str(e)}', 0)
+    finally:
+        # Keep the queue alive for a bit to ensure client receives final message
+        import time
+        time.sleep(2)
+
+@app.route('/status_stream/<session_id>')
+def status_stream(session_id):
+    """SSE endpoint to stream status updates"""
+    def generate():
+        try:
+            # Wait for queue to be created
+            max_wait = 10  # Wait up to 10 seconds
+            wait_count = 0
+            while session_id not in status_queues and wait_count < max_wait:
+                import time
+                time.sleep(0.1)
+                wait_count += 1
+            
+            if session_id not in status_queues:
+                yield f"data: {json.dumps({'status': 'error', 'message': 'Session not found'})}\n\n"
+                return
+            
+            while True:
+                try:
+                    # Get status update from queue (timeout after 30 seconds)
+                    status_update = status_queues[session_id].get(timeout=30)
+                    
+                    # Send the update
+                    yield f"data: {json.dumps(status_update)}\n\n"
+                    
+                    # If complete or error, clean up and stop
+                    if status_update['status'] in ['complete', 'error']:
+                        # Clean up the queue after a delay
+                        def cleanup():
+                            import time
+                            time.sleep(5)
+                            with status_locks:
+                                if session_id in status_queues:
+                                    del status_queues[session_id]
+                        
+                        cleanup_thread = threading.Thread(target=cleanup)
+                        cleanup_thread.daemon = True
+                        cleanup_thread.start()
+                        break
+                        
+                except queue.Empty:
+                    # Send keep-alive
+                    yield f": keep-alive\n\n"
+                    
+        except Exception as e:
+            logger.error(f"Error in status stream: {e}")
+            yield f"data: {json.dumps({'status': 'error', 'message': str(e)})}\n\n"
+    
+    return Response(stream_with_context(generate()), mimetype='text/event-stream')
 
 @app.route('/report/<int:report_id>')
 def view_report(report_id):
@@ -199,6 +341,7 @@ def save_config():
     """Save configuration"""
     try:
         llm_api_key = request.form.get('llm_api_key', '').strip()
+        llm_model = request.form.get('llm_model', 'gpt-4o-mini').strip()
         news_sources = request.form.get('news_sources', '').strip()
         chart_folder = request.form.get('chart_folder', '').strip()
         timezone = request.form.get('timezone', 'Europe/Berlin').strip()
@@ -212,6 +355,7 @@ def save_config():
         if config:
             # Update existing config
             config.llm_api_key = llm_api_key
+            config.llm_model = llm_model
             config.news_sources = news_sources
             config.chart_folder = chart_folder
             config.timezone = timezone
@@ -220,6 +364,7 @@ def save_config():
             # Create new config
             config = Config(
                 llm_api_key=llm_api_key,
+                llm_model=llm_model,
                 news_sources=news_sources,
                 chart_folder=chart_folder,
                 timezone=timezone,

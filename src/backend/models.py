@@ -25,6 +25,7 @@ class Config(Base):
     
     id = Column(Integer, primary_key=True, autoincrement=True)
     llm_api_key = Column(Text)
+    llm_model = Column(String(50), default='gpt-4o-mini')  # LLM model to use
     news_sources = Column(Text)
     chart_folder = Column(Text)
     timezone = Column(String(50), default='Europe/Berlin')  # Default to German timezone

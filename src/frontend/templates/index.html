@@ -12,7 +12,7 @@
                 </h3>
             </div>
             <div class="card-body">
-                <form method="POST" action="{{ url_for('generate_report_route') }}">
+                <form id="reportForm">
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label for="market" class="form-label">Select Market</label>
@@ -34,6 +34,30 @@
                         </button>
                     </div>
                 </form>
+                
+                <!-- Status section (hidden by default) -->
+                <div id="statusSection" class="mt-4" style="display: none;">
+                    <div class="card bg-light">
+                        <div class="card-body">
+                            <h5 class="card-title">
+                                <i class="fas fa-cog fa-spin me-2" id="statusIcon"></i>
+                                <span id="statusTitle">Generating Report...</span>
+                            </h5>
+                            <div class="progress mb-3" style="height: 25px;">
+                                <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated" 
+                                     role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                                    0%
+                                </div>
+                            </div>
+                            <div id="statusMessage" class="text-muted">
+                                <i class="fas fa-circle-notch fa-spin me-2"></i>Initializing...
+                            </div>
+                            <div id="statusLog" class="mt-3 small text-muted" style="max-height: 200px; overflow-y: auto;">
+                                <!-- Status updates will appear here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -105,16 +129,167 @@
     dateInput.style.backgroundColor = '#f8f9fa';
     dateInput.style.cursor = 'not-allowed';
     
-    // Handle form submission with loading state
-    document.querySelector('form').addEventListener('submit', function(e) {
-        const btn = document.getElementById('generateBtn');
+    let eventSource = null;
+    
+    // Handle form submission with async status updates
+    document.getElementById('reportForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
         
-        // Show loading state
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Generating Report...';
+        const btn = document.getElementById('generateBtn');
+        const statusSection = document.getElementById('statusSection');
+        const statusMessage = document.getElementById('statusMessage');
+        const statusLog = document.getElementById('statusLog');
+        const progressBar = document.getElementById('progressBar');
+        
+        // Disable button and show loading state
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Starting...';
         btn.disabled = true;
         
-        // Button will stay in loading state until page redirects to report
-        // No timeout needed - the page will redirect when report is ready
+        // Show status section
+        statusSection.style.display = 'block';
+        statusLog.innerHTML = '';
+        
+        // Get form data
+        const formData = new FormData(this);
+        
+        try {
+            // Submit form to start report generation
+            const response = await fetch('{{ url_for("generate_report_route") }}', {
+                method: 'POST',
+                body: formData
+            });
+            
+            const data = await response.json();
+            
+            if (data.error) {
+                showError(data.error);
+                return;
+            }
+            
+            // Check if report already exists
+            if (data.exists) {
+                showSuccess(data.message);
+                setTimeout(() => {
+                    window.location.href = `/report/${data.report_id}`;
+                }, 1500);
+                return;
+            }
+            
+            // Connect to SSE for status updates
+            const sessionId = data.session_id;
+            eventSource = new EventSource(`/status_stream/${sessionId}`);
+            
+            eventSource.onmessage = function(event) {
+                try {
+                    const update = JSON.parse(event.data);
+                    updateStatus(update);
+                    
+                    // Handle completion
+                    if (update.status === 'complete') {
+                        eventSource.close();
+                        setTimeout(() => {
+                            window.location.href = `/report/${update.report_id}`;
+                        }, 1500);
+                    } else if (update.status === 'error') {
+                        eventSource.close();
+                        showError(update.message);
+                    }
+                } catch (err) {
+                    console.error('Error parsing status update:', err);
+                }
+            };
+            
+            eventSource.onerror = function(err) {
+                console.error('EventSource error:', err);
+                eventSource.close();
+                showError('Connection to server lost. Please check if the report was generated.');
+            };
+            
+        } catch (error) {
+            showError(`Error: ${error.message}`);
+        }
     });
+    
+    function updateStatus(update) {
+        const statusMessage = document.getElementById('statusMessage');
+        const statusLog = document.getElementById('statusLog');
+        const progressBar = document.getElementById('progressBar');
+        const statusIcon = document.getElementById('statusIcon');
+        const statusTitle = document.getElementById('statusTitle');
+        
+        // Update message
+        statusMessage.innerHTML = `<i class="fas fa-circle-notch fa-spin me-2"></i>${update.message}`;
+        
+        // Update progress bar
+        progressBar.style.width = `${update.progress}%`;
+        progressBar.setAttribute('aria-valuenow', update.progress);
+        progressBar.textContent = `${update.progress}%`;
+        
+        // Add to log
+        const timestamp = new Date(update.timestamp).toLocaleTimeString();
+        const logEntry = document.createElement('div');
+        logEntry.className = 'mb-1';
+        logEntry.innerHTML = `<span class="text-muted">[${timestamp}]</span> ${update.message}`;
+        statusLog.appendChild(logEntry);
+        
+        // Auto-scroll to bottom
+        statusLog.scrollTop = statusLog.scrollHeight;
+        
+        // Update icon and title based on status
+        if (update.status === 'complete') {
+            statusIcon.className = 'fas fa-check-circle text-success me-2';
+            statusTitle.textContent = 'Report Generated Successfully!';
+            progressBar.classList.remove('progress-bar-animated');
+            progressBar.classList.add('bg-success');
+            statusMessage.innerHTML = `<i class="fas fa-check-circle text-success me-2"></i>${update.message}`;
+        } else if (update.status === 'error') {
+            statusIcon.className = 'fas fa-exclamation-circle text-danger me-2';
+            statusTitle.textContent = 'Error Generating Report';
+            progressBar.classList.remove('progress-bar-animated');
+            progressBar.classList.add('bg-danger');
+            statusMessage.innerHTML = `<i class="fas fa-exclamation-circle text-danger me-2"></i>${update.message}`;
+        }
+    }
+    
+    function showError(message) {
+        const statusSection = document.getElementById('statusSection');
+        const statusMessage = document.getElementById('statusMessage');
+        const progressBar = document.getElementById('progressBar');
+        const statusIcon = document.getElementById('statusIcon');
+        const statusTitle = document.getElementById('statusTitle');
+        const btn = document.getElementById('generateBtn');
+        
+        statusSection.style.display = 'block';
+        statusIcon.className = 'fas fa-exclamation-circle text-danger me-2';
+        statusTitle.textContent = 'Error';
+        statusMessage.innerHTML = `<i class="fas fa-exclamation-circle text-danger me-2"></i>${message}`;
+        progressBar.style.width = '100%';
+        progressBar.classList.remove('progress-bar-animated');
+        progressBar.classList.add('bg-danger');
+        
+        // Re-enable button
+        btn.innerHTML = '<i class="fas fa-magic me-2"></i>Generate Report';
+        btn.disabled = false;
+        
+        if (eventSource) {
+            eventSource.close();
+        }
+    }
+    
+    function showSuccess(message) {
+        const statusSection = document.getElementById('statusSection');
+        const statusMessage = document.getElementById('statusMessage');
+        const progressBar = document.getElementById('progressBar');
+        const statusIcon = document.getElementById('statusIcon');
+        const statusTitle = document.getElementById('statusTitle');
+        
+        statusSection.style.display = 'block';
+        statusIcon.className = 'fas fa-info-circle text-info me-2';
+        statusTitle.textContent = 'Report Already Exists';
+        statusMessage.innerHTML = `<i class="fas fa-info-circle text-info me-2"></i>${message}`;
+        progressBar.style.width = '100%';
+        progressBar.classList.remove('progress-bar-animated');
+        progressBar.classList.add('bg-info');
+    }
 </script>
 {% endblock %}
